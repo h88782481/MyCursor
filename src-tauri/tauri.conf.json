@@ -18,11 +18,17 @@
         "height": 680,
         "minWidth": 800,
         "minHeight": 600,
-        "resizable": true
+        "resizable": true,
+        "closable": true,
+        "visible": true
       }
     ],
     "security": {
       "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true
     }
   },
   "bundle": {

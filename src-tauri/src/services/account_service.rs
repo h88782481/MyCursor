@@ -47,15 +47,31 @@ impl AccountService {
 
     // === 增删改 ===
 
-    /// 添加账号
+    /// 添加或更新账号（邮箱已存在时更新 token/机器码等字段）
     pub fn add(&self, account: AccountInfo) -> Result<(), AppError> {
         let mut accounts = self.store.load_all()?;
 
-        if accounts.iter().any(|a| a.email == account.email) {
-            return Err(AppError::AccountDuplicate(account.email));
+        if let Some(existing) = accounts.iter_mut().find(|a| a.email == account.email) {
+            existing.token = account.token;
+            if account.refresh_token.is_some() {
+                existing.refresh_token = account.refresh_token;
+            }
+            if account.workos_cursor_session_token.is_some() {
+                existing.workos_cursor_session_token = account.workos_cursor_session_token;
+            }
+            if account.machine_ids.is_some() {
+                existing.machine_ids = account.machine_ids;
+            }
+            if !account.tags.is_empty() {
+                existing.tags = account.tags;
+            }
+            if account.username.is_some() {
+                existing.username = account.username;
+            }
+        } else {
+            accounts.push(account);
         }
 
-        accounts.push(account);
         self.store.save_all(&accounts)?;
         Ok(())
     }

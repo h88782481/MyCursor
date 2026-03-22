@@ -270,6 +270,32 @@ pub async fn get_user_info(token: String) -> Result<crate::domain::auth::AuthChe
     check_user_authorization(token).await
 }
 
+/// 获取关闭行为配置
+#[tauri::command]
+#[specta::specta]
+pub async fn get_close_behavior() -> Result<serde_json::Value, String> {
+    let minimize = crate::MINIMIZE_TO_TRAY.load(std::sync::atomic::Ordering::SeqCst);
+    Ok(serde_json::json!({"minimize_to_tray": minimize}))
+}
+
+/// 设置关闭行为
+#[tauri::command]
+#[specta::specta]
+pub async fn set_close_behavior(minimize_to_tray: bool) -> Result<serde_json::Value, String> {
+    crate::MINIMIZE_TO_TRAY.store(minimize_to_tray, std::sync::atomic::Ordering::SeqCst);
+
+    let data_dir = crate::get_data_dir()?;
+    let config_store = crate::infra::store::ConfigStore::new(&std::path::PathBuf::from(data_dir));
+    let mut config = config_store.read();
+    config["minimize_to_tray"] = serde_json::json!(minimize_to_tray);
+    config_store.write(&config).map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "message": if minimize_to_tray { "关闭时最小化到托盘" } else { "关闭时直接退出" }
+    }))
+}
+
 /// 获取 auth/me 信息
 ///
 /// 使用 WorkOS Session Token 查询 /api/auth/me。

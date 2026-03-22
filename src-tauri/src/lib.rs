@@ -24,7 +24,12 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+/// 关闭时最小化到托盘（true）还是直接退出（false）
+static MINIMIZE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 
 /// 获取应用目录
 pub fn get_app_dir() -> Result<PathBuf, String> {
@@ -96,12 +101,51 @@ pub fn run() {
         .manage(auth_service)
         .manage(analytics_service)
         .manage(seamless_service)
-        .setup(|_app| {
+        .setup(|app| {
             if let Err(e) = logger::Logger::init() {
                 eprintln!("日志初始化失败: {}", e);
             } else {
                 log_info!("MyCursor 启动中...");
             }
+
+            // 读取关闭行为配置
+            let data_dir = get_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let config_store = ConfigStore::new(&data_dir);
+            let config_val = config_store.read();
+            let minimize = config_val.get("minimize_to_tray")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            MINIMIZE_TO_TRAY.store(minimize, Ordering::SeqCst);
+
+            // 配置系统托盘
+            let app_handle = app.handle().clone();
+            let _tray = TrayIconBuilder::new()
+                .tooltip("MyCursor")
+                .on_tray_icon_event(move |_tray, event| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // 窗口关闭事件处理：最小化到托盘
+            let main_window = app.get_webview_window("main");
+            if let Some(window) = main_window {
+                let win = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        if MINIMIZE_TO_TRAY.load(Ordering::SeqCst) {
+                            api.prevent_close();
+                            let _ = win.hide();
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -182,6 +226,8 @@ pub fn run() {
             commands::system::check_user_authorization,
             commands::system::get_user_info,
             commands::system::get_auth_me,
+            commands::system::get_close_behavior,
+            commands::system::set_close_behavior,
 
             // === Window 命令 ===
             commands::window::generate_pkce_params,

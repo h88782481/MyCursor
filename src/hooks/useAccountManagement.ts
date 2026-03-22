@@ -153,14 +153,17 @@ export const useAccountManagement = () => {
 
         setAccountData((prevData) => {
           if (!prevData?.accounts) return prevData;
-          const updatedAccounts = [...prevData.accounts];
-          updatedAccounts[index] = {
-            ...updatedAccounts[index],
-            subscription_type: authResult.user_info.account_info.subscription_type,
-            subscription_status: authResult.user_info.account_info.subscription_status,
-            trial_days_remaining: authResult.user_info.account_info.trial_days_remaining,
-            ...authMeData,
-          };
+          const updatedAccounts = prevData.accounts.map((acc) =>
+            acc.email === account.email
+              ? {
+                  ...acc,
+                  subscription_type: authResult.user_info.account_info.subscription_type,
+                  subscription_status: authResult.user_info.account_info.subscription_status,
+                  trial_days_remaining: authResult.user_info.account_info.trial_days_remaining,
+                  ...authMeData,
+                }
+              : acc
+          );
 
           ConfigService.saveAccountCache(updatedAccounts);
 
@@ -178,8 +181,11 @@ export const useAccountManagement = () => {
         const { ConfigService } = await import("../services/configService");
         setAccountData((prevData) => {
           if (!prevData?.accounts) return prevData;
-          const updatedAccounts = [...prevData.accounts];
-          updatedAccounts[index] = { ...updatedAccounts[index], subscription_type: "token_expired" };
+          const updatedAccounts = prevData.accounts.map((acc) =>
+            acc.email === account.email
+              ? { ...acc, subscription_type: "token_expired" }
+              : acc
+          );
           ConfigService.saveAccountCache(updatedAccounts);
           return { ...prevData, accounts: updatedAccounts };
         });
@@ -315,22 +321,17 @@ export const useAccountManagement = () => {
   }, [accountData, concurrentLimit]);
 
   // 添加账户到本地列表（不调用 API 获取订阅信息）
-  const addAccountToList = useCallback(async (_email: string) => {
+  const addAccountToList = useCallback(async (email: string) => {
     try {
-      // 重新加载账户列表，但只从本地文件读取，不获取订阅信息
       const result = await AccountService.getAccountList();
 
       if (result.success) {
-        // ✅ 关键修复：合并新账号和已有账号的订阅信息
-        // 保留已有账号的订阅信息，只添加新账号（订阅信息为空）
         const mergedAccounts = result.accounts.map((newAccount) => {
-          // 查找当前状态中是否已有这个账号
           const existingAccount = accountData?.accounts.find(
             (acc) => acc.email === newAccount.email
           );
 
           if (existingAccount) {
-            // ✅ 如果是已有账号，保留其订阅信息
             return {
               ...newAccount,
               subscription_type: existingAccount.subscription_type,
@@ -338,7 +339,6 @@ export const useAccountManagement = () => {
               trial_days_remaining: existingAccount.trial_days_remaining,
             };
           } else {
-            // ✅ 如果是新账号，订阅信息为空（用户需要手动刷新）
             return newAccount;
           }
         });
@@ -347,6 +347,35 @@ export const useAccountManagement = () => {
           ...result,
           accounts: mergedAccounts,
         });
+
+        // 自动刷新新添加账号的订阅信息
+        const newAccount = mergedAccounts.find((acc) => acc.email === email);
+        if (newAccount && !newAccount.subscription_type) {
+          try {
+            const { ConfigService } = await import("../services/configService");
+            const authResult = await ConfigService.refreshSingleAccountInfo(newAccount.token);
+            if (authResult.success && authResult.user_info?.account_info) {
+              setAccountData((prev) => {
+                if (!prev?.accounts) return prev;
+                const updated = prev.accounts.map((acc) =>
+                  acc.email === email
+                    ? {
+                        ...acc,
+                        subscription_type: authResult.user_info.account_info.subscription_type,
+                        subscription_status: authResult.user_info.account_info.subscription_status,
+                        trial_days_remaining: authResult.user_info.account_info.trial_days_remaining,
+                      }
+                    : acc
+                );
+                ConfigService.saveAccountCache(updated);
+                return { ...prev, accounts: updated };
+              });
+            }
+          } catch {
+            // 刷新失败不影响添加结果
+          }
+        }
+
         return { success: true };
       }
       return { success: false, message: result.message };
