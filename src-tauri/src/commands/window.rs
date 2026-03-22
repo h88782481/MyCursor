@@ -59,20 +59,61 @@ pub async fn open_bind_card_info(
     access_token: String,
     workos_cursor_session_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let url = "https://www.cursor.com/settings".to_string();
+    let cookie = match &workos_cursor_session_token {
+        Some(wt) if !wt.is_empty() => format!("WorkosCursorSessionToken={}", wt),
+        _ => {
+            let token_part = if access_token.contains("%3A%3A") {
+                access_token.split("%3A%3A").nth(1).unwrap_or(&access_token)
+            } else if access_token.contains("::") {
+                access_token.split("::").nth(1).unwrap_or(&access_token)
+            } else {
+                &access_token
+            };
+            format!("WorkosCursorSessionToken=user_01000000000000000000000000%3A%3A{}", token_part)
+        }
+    };
 
-    let _window = tauri::WebviewWindowBuilder::new(
+    log_info!("获取 Stripe 订阅管理链接...");
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://cursor.com/api/stripeSession")
+        .header("Cookie", &cookie)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Ok(serde_json::json!({"success": false, "message": format!("获取绑卡信息失败 ({})", status)}));
+    }
+
+    let mut url = resp.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+    url = url.trim().trim_matches('"').to_string();
+
+    if url.is_empty() || !url.starts_with("https://") {
+        return Ok(serde_json::json!({"success": false, "message": "该账户暂无绑卡信息"}));
+    }
+
+    if let Some(w) = app.get_webview_window("bind_card_info") {
+        let _ = w.close();
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    match tauri::WebviewWindowBuilder::new(
         &app,
-        "bind_card",
+        "bind_card_info",
         tauri::WebviewUrl::External(url.parse().map_err(|e| format!("URL 解析失败: {}", e))?),
     )
-    .title("绑卡信息")
+    .title("绑卡/订阅信息")
     .inner_size(1200.0, 800.0)
-    .center()
     .build()
-    .map_err(|e| e.to_string())?;
-
-    Ok(serde_json::json!({"success": true, "message": "已打开绑卡页面"}))
+    {
+        Ok(_) => Ok(serde_json::json!({"success": true, "message": "已打开绑卡信息页面"})),
+        Err(e) => Ok(serde_json::json!({"success": false, "message": format!("打开窗口失败: {}", e)})),
+    }
 }
 
 /// 删除 Cursor 账户
@@ -397,16 +438,56 @@ pub async fn open_cursor_dashboard(
     app: tauri::AppHandle,
     workos_cursor_session_token: String,
 ) -> Result<serde_json::Value, String> {
-    let _window = tauri::WebviewWindowBuilder::new(
+    if workos_cursor_session_token.is_empty() {
+        return Ok(serde_json::json!({
+            "success": false,
+            "message": "缺少 WorkOS Session Token，无法登录 Cursor 主页"
+        }));
+    }
+
+    log_info!("打开 Cursor 主页...");
+
+    if let Some(w) = app.get_webview_window("cursor_dashboard") {
+        let _ = w.close();
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    let token = workos_cursor_session_token.clone();
+    let injected = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let injected_clone = injected.clone();
+
+    match tauri::WebviewWindowBuilder::new(
         &app,
         "cursor_dashboard",
-        tauri::WebviewUrl::External("https://www.cursor.com/settings".parse().unwrap()),
+        tauri::WebviewUrl::External("https://cursor.com".parse().unwrap()),
     )
-    .title("Cursor Dashboard")
+    .title("Cursor - 主页")
     .inner_size(1200.0, 800.0)
-    .center()
-    .build()
-    .map_err(|e| e.to_string())?;
+    .on_page_load(move |webview, payload| {
+        if injected_clone.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
 
-    Ok(serde_json::json!({"success": true, "message": "已打开 Dashboard"}))
+        let url = payload.url().to_string();
+        if !url.contains("cursor.com") {
+            return;
+        }
+
+        injected_clone.store(true, std::sync::atomic::Ordering::Relaxed);
+
+        let script = format!(
+            r#"(function(){{
+                document.cookie="WorkosCursorSessionToken={}; domain=.cursor.com; path=/; secure; max-age=31536000";
+                document.cookie="NEXT_LOCALE=zh-CN; domain=.cursor.com; path=/; max-age=31536000";
+                window.location.href="https://cursor.com/dashboard";
+            }})();"#,
+            token
+        );
+        let _ = webview.eval(&script);
+    })
+    .build()
+    {
+        Ok(_) => Ok(serde_json::json!({"success": true, "message": "已打开 Cursor 主页"})),
+        Err(e) => Ok(serde_json::json!({"success": false, "message": format!("打开失败: {}", e)})),
+    }
 }

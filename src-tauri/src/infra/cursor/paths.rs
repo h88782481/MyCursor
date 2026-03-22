@@ -11,9 +11,21 @@ pub fn resolve(custom_path: Option<&str>) -> Result<ResolvedPaths, AppError> {
 
     let (app_dir, workbench_js, main_js) = if let Some(custom) = custom_path {
         let p = PathBuf::from(custom);
-        let wb = p.join("out").join("vs").join("workbench").join("workbench.desktop.main.js");
-        let mj = p.join("out").join("main.js");
-        (Some(p), if wb.exists() { Some(wb) } else { None }, if mj.exists() { Some(mj) } else { None })
+        // 尝试多种子路径组合
+        let candidates = vec![
+            p.clone(),
+            p.join("resources").join("app"),
+        ];
+        let mut found = (None, None, None);
+        for dir in &candidates {
+            let wb = dir.join("out").join("vs").join("workbench").join("workbench.desktop.main.js");
+            let mj = dir.join("out").join("main.js");
+            if wb.exists() {
+                found = (Some(dir.clone()), Some(wb), if mj.exists() { Some(mj) } else { None });
+                break;
+            }
+        }
+        if found.0.is_some() { found } else { (Some(p), None, None) }
     } else {
         resolve_app_paths()
     };

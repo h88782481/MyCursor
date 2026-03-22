@@ -20,17 +20,17 @@ pub async fn save_usage_data_cache(cache_data: String) -> Result<serde_json::Val
 pub async fn load_usage_data_cache(email: String) -> Result<serde_json::Value, String> {
     let path = crate::get_data_dir()?.join("usage_data.json");
     if !path.exists() {
-        return Ok(serde_json::json!(null));
+        return Ok(serde_json::json!({"success": false, "message": "缓存文件不存在"}));
     }
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let data: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     if let Some(cached_email) = data.get("email").and_then(|e| e.as_str()) {
         if cached_email == email {
-            return Ok(data);
+            return Ok(serde_json::json!({"success": true, "data": data}));
         }
     }
-    Ok(serde_json::json!(null))
+    Ok(serde_json::json!({"success": false, "message": "缓存邮箱不匹配"}))
 }
 
 /// 清除用量缓存
@@ -59,11 +59,11 @@ pub async fn save_events_data_cache(events_data: String) -> Result<serde_json::V
 pub async fn load_events_data_cache() -> Result<serde_json::Value, String> {
     let path = crate::get_data_dir()?.join("events_data.json");
     if !path.exists() {
-        return Ok(serde_json::json!(null));
+        return Ok(serde_json::json!({"success": false, "message": "缓存不存在"}));
     }
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let data: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    Ok(data)
+    Ok(serde_json::json!({"success": true, "data": data}))
 }
 
 /// 清除事件缓存
