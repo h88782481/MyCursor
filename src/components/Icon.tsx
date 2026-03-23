@@ -45,6 +45,9 @@ import {
   IconLogin,
   IconDots,
   IconFeather,
+  IconAppWindow,
+  IconArrowBarDown,
+  IconPower,
 } from '@tabler/icons-react';
 
 export type IconName =
@@ -87,7 +90,10 @@ export type IconName =
   | 'logout'
   | 'login'
   | 'dots'
-  | 'feather';
+  | 'feather'
+  | 'window'
+  | 'minimize'
+  | 'power';
 
 interface IconProps {
   name: IconName;
@@ -139,6 +145,9 @@ const iconMap = {
   login: IconLogin,
   dots: IconDots,
   feather: IconFeather,
+  window: IconAppWindow,
+  minimize: IconArrowBarDown,
+  power: IconPower,
 };
 
 /**

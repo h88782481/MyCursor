@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Card,
   Button,
@@ -10,6 +10,25 @@ import { invoke } from "@tauri-apps/api/core";
 
 const SettingsPage = () => {
   const { toasts, removeToast, showSuccess, showError } = useToast();
+  const [minimizeToTray, setMinimizeToTray] = useState(true);
+
+  useEffect(() => {
+    invoke<{ minimize_to_tray: boolean }>("get_close_behavior")
+      .then((result) => setMinimizeToTray(result.minimize_to_tray))
+      .catch(() => {});
+  }, []);
+
+  const handleSetCloseBehavior = useCallback(async (minimize: boolean) => {
+    try {
+      const result = await invoke<{ success: boolean; message: string }>("set_close_behavior", { minimizeToTray: minimize });
+      if (result.success) {
+        setMinimizeToTray(minimize);
+        showSuccess(result.message);
+      }
+    } catch (_error) {
+      showError("设置关闭行为失败");
+    }
+  }, [showSuccess, showError]);
 
   const handleClearUsageData = useCallback(async () => {
     try {
@@ -59,6 +78,37 @@ const SettingsPage = () => {
           <Icon name="settings" size={28} />
           应用设置
         </h2>
+
+        {/* 关闭行为 */}
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <Icon name="window" size={20} />
+              关闭行为
+            </h3>
+            <div className="flex gap-3">
+              <Button
+                variant={minimizeToTray ? "primary" : "ghost"}
+                onClick={() => handleSetCloseBehavior(true)}
+                icon={<Icon name="minimize" size={16} />}
+              >
+                最小化到托盘
+              </Button>
+              <Button
+                variant={!minimizeToTray ? "primary" : "ghost"}
+                onClick={() => handleSetCloseBehavior(false)}
+                icon={<Icon name="power" size={16} />}
+              >
+                直接退出
+              </Button>
+            </div>
+            <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+              设置点击窗口关闭按钮时的行为
+            </p>
+          </div>
+        </div>
+
+        <hr style={{ borderColor: 'var(--border-primary)', margin: '24px 0' }} />
 
         {/* 数据管理 */}
         <div className="space-y-6">

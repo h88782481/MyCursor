@@ -26,6 +26,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 /// 关闭时最小化到托盘（true）还是直接退出（false）
@@ -117,10 +118,35 @@ pub fn run() {
                 .unwrap_or(true);
             MINIMIZE_TO_TRAY.store(minimize, Ordering::SeqCst);
 
-            // 配置系统托盘
+            // 配置系统托盘菜单
+            let show_item = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+            let tray_menu = MenuBuilder::new(app)
+                .item(&show_item)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+
             let app_handle = app.handle().clone();
+            let app_handle_menu = app.handle().clone();
             let _tray = TrayIconBuilder::new()
                 .tooltip("MyCursor")
+                .menu(&tray_menu)
+                .on_menu_event(move |_app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app_handle_menu.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.unminimize();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            std::process::exit(0);
+                        }
+                        _ => {}
+                    }
+                })
                 .on_tray_icon_event(move |_tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                         if let Some(window) = app_handle.get_webview_window("main") {
