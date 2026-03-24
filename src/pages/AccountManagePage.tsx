@@ -207,11 +207,12 @@ export const AccountManagePage: React.FC = () => {
         return;
       }
 
-      const option = resetMachineId ? machineIdOption : "none";
+      const useBoundMachineId = resetMachineId && machineIdOption === "bound";
+      const resetMachineIdFlag = resetMachineId && machineIdOption === "new";
       const { invoke } = await import("@tauri-apps/api/core");
       const result = await invoke<{ success: boolean; message: string; details: string[] }>(
         "switch_account_with_options",
-        { email: account.email, machineIdOption: option }
+        { email: account.email, resetMachineId: resetMachineIdFlag, useBoundMachineId }
       );
 
       if (result.success) {
