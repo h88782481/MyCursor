@@ -114,24 +114,22 @@ export const ToastManager: React.FC<ToastManagerProps> = ({
 export const useToast = () => {
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
 
-  const addToast = (type: ToastType, message: string) => {
+  const addToast = React.useCallback((type: ToastType, message: string) => {
     const id = Date.now().toString();
     setToasts((prev) => {
-      // ✅ 限制最多保留 5 个 Toast，防止内存泄漏
       const newToasts = [...prev, { id, type, message }];
-      // 如果超过 5 个，只保留最新的 5 个
       return newToasts.slice(-5);
     });
-  };
+  }, []);
 
-  const removeToast = (id: string) => {
+  const removeToast = React.useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+  }, []);
 
-  const showSuccess = (message: string) => addToast("success", message);
-  const showError = (message: string) => addToast("error", message);
-  const showInfo = (message: string) => addToast("info", message);
-  const showWarning = (message: string) => addToast("warning", message);
+  const showSuccess = React.useCallback((message: string) => addToast("success", message), [addToast]);
+  const showError = React.useCallback((message: string) => addToast("error", message), [addToast]);
+  const showInfo = React.useCallback((message: string) => addToast("info", message), [addToast]);
+  const showWarning = React.useCallback((message: string) => addToast("warning", message), [addToast]);
 
   return {
     toasts,

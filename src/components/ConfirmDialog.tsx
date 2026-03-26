@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
 import { Icon } from "./Icon";
@@ -126,13 +126,13 @@ export const useConfirmDialog = () => {
     onConfirm: () => {},
   });
 
-  const showConfirm = (options: Omit<typeof dialogState, "show">) => {
+  const showConfirm = useCallback((options: Omit<typeof dialogState, "show">) => {
     setDialogState({ ...options, show: true });
-  };
+  }, []);
 
-  const hideConfirm = () => {
+  const hideConfirm = useCallback(() => {
     setDialogState((prev) => ({ ...prev, show: false }));
-  };
+  }, []);
 
   const ConfirmDialogComponent = () => (
     <ConfirmDialog
