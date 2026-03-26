@@ -6,6 +6,10 @@ use crate::services::account_service::AccountService;
 use crate::{log_info, log_error};
 use tauri::State;
 
+#[cfg(target_os = "windows")]
+use rusqlite::{params, Connection};
+
+
 /// 获取当前账号
 #[tauri::command]
 #[specta::specta]
@@ -347,37 +351,166 @@ pub async fn list_windows_users() -> Result<serde_json::Value, String> {
 pub async fn sync_account_to_user(target_username: String) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "windows")]
     {
-        let source_appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-        let source_storage = std::path::PathBuf::from(&source_appdata)
-            .join("Cursor").join("User").join("globalStorage").join("storage.json");
+        fn upsert_sqlite_value(conn: &Connection, key: &str, value: &str) -> Result<(), rusqlite::Error> {
+            conn.execute(
+                "INSERT INTO ItemTable (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+            Ok(())
+        }
 
-        let target_storage = std::path::PathBuf::from("C:\\Users")
-            .join(&target_username)
-            .join("AppData").join("Roaming")
-            .join("Cursor").join("User").join("globalStorage").join("storage.json");
+        let current_username = std::env::var("USERNAME").unwrap_or_default();
+        if target_username.eq_ignore_ascii_case(&current_username) {
+            return Ok(serde_json::json!({
+                "success": false,
+                "message": "不能同步到当前登录用户自身"
+            }));
+        }
+
+        let source_appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
+        let source_cursor_dir = std::path::PathBuf::from(&source_appdata).join("Cursor");
+        let source_global_storage = source_cursor_dir.join("User").join("globalStorage");
+        let source_storage = source_global_storage.join("storage.json");
+        let source_sqlite = source_global_storage.join("state.vscdb");
 
         if !source_storage.exists() {
             return Ok(serde_json::json!({"success": false, "message": "源 storage.json 不存在"}));
         }
 
-        if let Some(parent) = target_storage.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        let cursor = crate::infra::cursor::CursorBridge::new(None).map_err(|e| e.to_string())?;
+        let process = cursor.process();
+        let mut details = Vec::new();
+        if process.is_running() {
+            if process.force_close() {
+                details.push("已关闭所有 Cursor 进程".to_string());
+            } else {
+                details.push("警告：关闭 Cursor 进程失败，部分文件可能被占用".to_string());
+            }
+        } else {
+            details.push("Cursor 当前未运行".to_string());
         }
 
-        std::fs::copy(&source_storage, &target_storage).map_err(|e| e.to_string())?;
+        let target_user_dir = std::path::PathBuf::from("C:\\Users").join(&target_username);
+        if !target_user_dir.exists() {
+            return Ok(serde_json::json!({
+                "success": false,
+                "message": format!("目标用户目录不存在: {}", target_user_dir.to_string_lossy())
+            }));
+        }
 
-        let source_account = crate::get_data_dir()?.join("account_cache.json");
-        if source_account.exists() {
-            let target_account = std::path::PathBuf::from("C:\\Users")
-                .join(&target_username)
-                .join("AppData").join("Roaming")
-                .join("Cursor").join("User").join("globalStorage")
-                .join("account_cache.json");
-            let _ = std::fs::copy(&source_account, &target_account);
+        let target_cursor_dir = target_user_dir.join("AppData").join("Roaming").join("Cursor");
+        let target_global_storage = target_cursor_dir.join("User").join("globalStorage");
+        std::fs::create_dir_all(&target_global_storage).map_err(|e| e.to_string())?;
+
+        let machine_ids = cursor.read_full_machine_ids().map_err(|e| e.to_string())?;
+
+        let mut target_storage_data = if target_global_storage.join("storage.json").exists() {
+            let content = std::fs::read_to_string(target_global_storage.join("storage.json")).map_err(|e| e.to_string())?;
+            serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        if let Some(obj) = target_storage_data.as_object_mut() {
+            obj.insert("telemetry.devDeviceId".to_string(), serde_json::json!(machine_ids.dev_device_id));
+            obj.insert("telemetry.macMachineId".to_string(), serde_json::json!(machine_ids.mac_machine_id));
+            obj.insert("telemetry.machineId".to_string(), serde_json::json!(machine_ids.machine_id));
+            obj.insert("telemetry.sqmId".to_string(), serde_json::json!(machine_ids.sqm_id));
+            obj.insert("storage.serviceMachineId".to_string(), serde_json::json!(machine_ids.service_machine_id));
+            if let Some(machine_guid) = &machine_ids.machine_guid {
+                obj.insert("system.machineGuid".to_string(), serde_json::json!(machine_guid));
+            }
+            if let Some(sqm_client_id) = &machine_ids.sqm_client_id {
+                obj.insert("system.sqmClientId".to_string(), serde_json::json!(sqm_client_id));
+            }
+        }
+
+        let target_storage = target_global_storage.join("storage.json");
+        std::fs::write(
+            &target_storage,
+            serde_json::to_string_pretty(&target_storage_data).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        details.push("已同步 storage.json 中的机器码字段".to_string());
+
+        let source_email = cursor.storage().read_email().map_err(|e| e.to_string())?.unwrap_or_default();
+        let source_token = cursor.storage().read_token().map_err(|e| e.to_string())?.unwrap_or_default();
+
+        if source_email.is_empty() || source_token.is_empty() {
+            return Ok(serde_json::json!({
+                "success": false,
+                "message": "未读取到当前 Cursor 登录的账号或 Token"
+            }));
+        }
+
+        let auth_keys = [
+            "cursorAuth/accessToken",
+            "cursorAuth/refreshToken",
+            "cursorAuth/cachedEmail",
+            "cursorAuth/userId",
+            "cursorAuth/cachedSignUpType",
+            "cursorAuth/stripeMembershipType",
+            "cursorAuth/stripeSubscriptionStatus",
+            "cursorai/donotchange/newPrivacyMode2",
+            "cursorai/donotchange/privacyMode",
+            "cursorai/donotchange/partnerDataShare",
+            "cursorai/donotchange/hasReconciledNewPrivacyModeWithServerOnUpgrade",
+            "cursorai/donotchange/newPrivacyModeHoursRemainingInGracePeriod",
+            "storage.serviceMachineId",
+            "cursorai/featureConfigCache",
+            "cursorai/serverConfig",
+            "src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser",
+            "adminSettings.cached",
+            "autorun.cachedAdminSettings",
+            "cursor.email",
+            "cursor.accessToken",
+        ];
+
+        let mut auth_values = std::collections::HashMap::new();
+        if source_sqlite.exists() {
+            let source_conn = Connection::open(&source_sqlite).map_err(|e| e.to_string())?;
+            for key in auth_keys {
+                let value = source_conn.query_row(
+                    "SELECT value FROM ItemTable WHERE key = ?1",
+                    params![key],
+                    |row| row.get::<_, String>(0),
+                );
+                if let Ok(v) = value {
+                    auth_values.insert(key.to_string(), v);
+                }
+            }
+        }
+
+        auth_values.insert("cursorAuth/cachedEmail".to_string(), source_email.clone());
+        auth_values.insert("cursor.email".to_string(), source_email.clone());
+        auth_values.insert("cursorAuth/accessToken".to_string(), source_token.clone());
+        auth_values.insert("cursorAuth/refreshToken".to_string(), source_token.clone());
+        auth_values.insert("cursor.accessToken".to_string(), source_token.clone());
+        auth_values.entry("cursorAuth/cachedSignUpType".to_string()).or_insert_with(|| "Auth_0".to_string());
+        auth_values.insert("storage.serviceMachineId".to_string(), machine_ids.service_machine_id.clone());
+
+        let target_sqlite = target_global_storage.join("state.vscdb");
+        if target_sqlite.exists() {
+            let conn = Connection::open(&target_sqlite).map_err(|e| e.to_string())?;
+
+            for (key, value) in auth_values {
+                upsert_sqlite_value(&conn, &key, &value).map_err(|e| e.to_string())?;
+            }
+
+            details.push("已按参考脚本同步 state.vscdb 中的认证与账号字段".to_string());
+        } else {
+            details.push("目标用户不存在 state.vscdb，已跳过认证信息注入".to_string());
         }
 
         crate::log_info!("已同步到用户: {}", target_username);
-        Ok(serde_json::json!({"success": true, "message": format!("已同步到 {}", target_username)}))
+        Ok(serde_json::json!({
+            "success": true,
+            "message": format!("已将当前账号与机器码同步到 {}", target_username),
+            "details": details,
+            "target_storage": target_storage,
+            "target_sqlite": target_sqlite
+        }))
     }
     #[cfg(not(target_os = "windows"))]
     {

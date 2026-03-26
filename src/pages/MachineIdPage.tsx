@@ -107,6 +107,26 @@ const MachineIdPage = () => {
     }
   };
 
+  const handleSyncAccountToUser = async (username: string) => {
+    setSyncingUser(username);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const result = await invoke<{ success: boolean; message: string }>("sync_account_to_user", {
+        targetUsername: username,
+      });
+
+      if (result.success) {
+        showSuccess(result.message);
+      } else {
+        showError(result.message);
+      }
+    } catch (error) {
+      showError(`同步失败: ${error}`);
+    } finally {
+      setSyncingUser(null);
+    }
+  };
+
   const loadBackups = async () => {
     try {
       setLoading(true);
@@ -518,8 +538,13 @@ const MachineIdPage = () => {
                         const { invoke } = await import("@tauri-apps/api/core");
                         const result = await invoke<{ success: boolean; users: { username: string; has_cursor: boolean }[] }>("list_windows_users");
                         if (result.success) {
-                          setWindowsUsers(result.users);
-                          if (result.users.length === 0) showSuccess("未检测到其他 Windows 用户");
+                          const availableUsers = result.users.filter((user) => user.has_cursor);
+                          setWindowsUsers(availableUsers);
+                          if (result.users.length === 0) {
+                            showSuccess("未检测到其他 Windows 用户");
+                          } else if (availableUsers.length === 0) {
+                            showSuccess("已检测到其他 Windows 用户，但没有发现可用的 Cursor 数据目录");
+                          }
                         }
                       } catch (error) {
                         showError(`检测用户失败: ${error}`);
@@ -545,31 +570,25 @@ const MachineIdPage = () => {
                       >
                         <div>
                           <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{user.username}</span>
-                          <span className="text-xs ml-2" style={{ color: user.has_cursor ? '#10b981' : 'var(--text-tertiary)' }}>
-                            {user.has_cursor ? "已安装 Cursor" : "未安装 Cursor"}
+                          <span className="text-xs ml-2" style={{ color: '#10b981' }}>
+                            已安装 Cursor
                           </span>
                         </div>
                         <Button
                           variant="primary"
                           size="sm"
                           loading={syncingUser === user.username}
-                          onClick={async () => {
-                            const confirmed = window.confirm(`确定要将当前账号同步到用户 "${user.username}" 的 Cursor 中吗？\n\n此操作会关闭所有 Cursor 进程！`);
-                            if (!confirmed) return;
-                            setSyncingUser(user.username);
-                            try {
-                              const { invoke } = await import("@tauri-apps/api/core");
-                              const result = await invoke<{ success: boolean; message: string }>("sync_account_to_user", { targetUsername: user.username });
-                              if (result.success) {
-                                showSuccess(result.message);
-                              } else {
-                                showError(result.message);
-                              }
-                            } catch (error) {
-                              showError(`同步失败: ${error}`);
-                            } finally {
-                              setSyncingUser(null);
-                            }
+                          onClick={() => {
+                            showConfirm({
+                              title: "确认同步到其他用户",
+                              message: `确定要将当前账号同步到用户“${user.username}”的 Cursor 中吗？\n\n此操作会关闭所有 Cursor 进程。`,
+                              confirmText: "确认同步",
+                              cancelText: "取消",
+                              type: "warning",
+                              onConfirm: () => {
+                                void handleSyncAccountToUser(user.username);
+                              },
+                            });
                           }}
                           icon={<Icon name="arrows-exchange" size={14} />}
                         >

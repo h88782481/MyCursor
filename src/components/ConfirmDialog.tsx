@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Modal from "./Modal";
 import Button from "./Button";
+import { Icon } from "./Icon";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -34,9 +35,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   const typeIcons = {
-    danger: "🚨",
-    warning: "⚠️",
-    info: "ℹ️",
+    danger: <Icon name="alert" size={28} style={{ color: "var(--danger-color)" }} />,
+    warning: <Icon name="alert" size={28} style={{ color: "var(--warning-color, #f59e0b)" }} />,
+    info: <Icon name="info" size={28} style={{ color: "var(--primary-color)" }} />,
   };
 
   const confirmButtonVariant = type === "danger" ? "danger" : "primary";
@@ -58,22 +59,43 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       }
     >
       <div className="text-center py-4">
-        <div className="text-5xl mb-4">{typeIcons[type]}</div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-2">{title}</h3>
-        <p className="text-gray-600 whitespace-pre-line mb-4">{message}</p>
+        <div
+          className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full"
+          style={{
+            backgroundColor:
+              type === "danger"
+                ? "rgba(239, 68, 68, 0.12)"
+                : type === "warning"
+                  ? "rgba(245, 158, 11, 0.12)"
+                  : "rgba(59, 130, 246, 0.12)",
+          }}
+        >
+          {typeIcons[type]}
+        </div>
+        <h3 className="text-xl font-semibold mb-2" style={{ color: "var(--text-primary)" }}>
+          {title}
+        </h3>
+        <p className="whitespace-pre-line mb-4 leading-6" style={{ color: "var(--text-secondary)" }}>
+          {message}
+        </p>
 
         {checkboxLabel && (
-          <div className="flex items-center justify-center gap-2 mt-6 p-4 bg-gray-50 rounded-lg">
+          <div
+            className="flex items-center justify-center gap-2 mt-6 p-4 rounded-lg"
+            style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-primary)" }}
+          >
             <input
               type="checkbox"
               id="confirm-checkbox"
               checked={checkboxValue}
               onChange={(e) => setCheckboxValue(e.target.checked)}
-              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              className="w-4 h-4 rounded"
+              style={{ accentColor: "var(--primary-color)" }}
             />
             <label
               htmlFor="confirm-checkbox"
-              className="text-sm text-gray-700 cursor-pointer"
+              className="text-sm cursor-pointer"
+              style={{ color: "var(--text-secondary)" }}
             >
               {checkboxLabel}
             </label>
