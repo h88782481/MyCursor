@@ -15,6 +15,10 @@ export function useAccountsPageEffects({
   setToast,
 }: UseAccountsPageEffectsParams) {
   const cleanupListenersRef = useRef<(() => void) | null>(null);
+  const addAccountToListRef = useRef(addAccountToList);
+  addAccountToListRef.current = addAccountToList;
+  const setToastRef = useRef(setToast);
+  setToastRef.current = setToast;
 
   useEffect(() => {
     void loadAccounts();
@@ -26,14 +30,14 @@ export function useAccountsPageEffects({
       const unlistenSuccess = await listen<{ token?: string }>("auto-login-success", async (event) => {
         const webToken = event.payload?.token;
         if (webToken) {
-          setToast({ message: "登录成功！", type: "success" });
-          await addAccountToList("");
+          setToastRef.current({ message: "登录成功！", type: "success" });
+          await addAccountToListRef.current("");
         }
       });
       listeners.push(unlistenSuccess);
 
       const unlistenFailed = await listen("auto-login-failed", () => {
-        setToast({ message: "自动登录失败", type: "error" });
+        setToastRef.current({ message: "自动登录失败", type: "error" });
       });
       listeners.push(unlistenFailed);
 
@@ -47,7 +51,7 @@ export function useAccountsPageEffects({
     return () => {
       cleanupListenersRef.current?.();
     };
-  }, [loadAccounts, addAccountToList, setToast]);
+  }, [loadAccounts]);
 
   useEffect(() => {
     if (!toast) {
