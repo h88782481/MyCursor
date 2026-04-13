@@ -419,14 +419,6 @@ pub async fn sync_account_to_user(target_username: String) -> Result<serde_json:
             }
         }
 
-        let target_storage = target_global_storage.join("storage.json");
-        std::fs::write(
-            &target_storage,
-            serde_json::to_string_pretty(&target_storage_data).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-        details.push("已同步 storage.json 中的机器码字段".to_string());
-
         let source_email = cursor.storage().read_email().map_err(|e| e.to_string())?.unwrap_or_default();
         let source_token = cursor.storage().read_token().map_err(|e| e.to_string())?.unwrap_or_default();
 
@@ -436,6 +428,24 @@ pub async fn sync_account_to_user(target_username: String) -> Result<serde_json:
                 "message": "未读取到当前 Cursor 登录的账号或 Token"
             }));
         }
+
+        // 将机器码 + 认证信息一并写入目标 storage.json
+        if let Some(obj) = target_storage_data.as_object_mut() {
+            obj.insert("cursorAuth/cachedEmail".to_string(), serde_json::json!(source_email));
+            obj.insert("cursorAuth/accessToken".to_string(), serde_json::json!(source_token));
+            obj.insert("cursorAuth/refreshToken".to_string(), serde_json::json!(source_token));
+            obj.insert("cursorAuth/cachedSignUpType".to_string(), serde_json::json!("Auth_0"));
+            obj.insert("cursor.email".to_string(), serde_json::json!(source_email));
+            obj.insert("cursor.accessToken".to_string(), serde_json::json!(source_token));
+        }
+
+        let target_storage = target_global_storage.join("storage.json");
+        std::fs::write(
+            &target_storage,
+            serde_json::to_string_pretty(&target_storage_data).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        details.push("已同步 storage.json（机器码 + 认证信息）".to_string());
 
         let auth_keys = [
             "cursorAuth/accessToken",
@@ -475,11 +485,12 @@ pub async fn sync_account_to_user(target_username: String) -> Result<serde_json:
             }
         }
 
+        // 仅覆盖 email 相关字段；accessToken/refreshToken 优先保留源 SQLite 中的原始值
         auth_values.insert("cursorAuth/cachedEmail".to_string(), source_email.clone());
         auth_values.insert("cursor.email".to_string(), source_email.clone());
-        auth_values.insert("cursorAuth/accessToken".to_string(), source_token.clone());
-        auth_values.insert("cursorAuth/refreshToken".to_string(), source_token.clone());
-        auth_values.insert("cursor.accessToken".to_string(), source_token.clone());
+        auth_values.entry("cursorAuth/accessToken".to_string()).or_insert_with(|| source_token.clone());
+        auth_values.entry("cursorAuth/refreshToken".to_string()).or_insert_with(|| source_token.clone());
+        auth_values.entry("cursor.accessToken".to_string()).or_insert_with(|| source_token.clone());
         auth_values.entry("cursorAuth/cachedSignUpType".to_string()).or_insert_with(|| "Auth_0".to_string());
         auth_values.insert("storage.serviceMachineId".to_string(), machine_ids.service_machine_id.clone());
 
