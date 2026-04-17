@@ -155,9 +155,9 @@ pub async fn edit_account(
     if let Some(acc) = accounts.iter_mut().find(|a| a.email == email) {
         if let Some(ne) = new_email { acc.email = ne; }
         if let Some(nt) = new_token { acc.token = nt; }
-        if let Some(nr) = new_refresh_token { acc.refresh_token = Some(nr); }
-        if let Some(nw) = new_workos_cursor_session_token { acc.workos_cursor_session_token = Some(nw); }
-        if let Some(nu) = new_username { acc.username = Some(nu); }
+        if let Some(nr) = new_refresh_token { acc.refresh_token = if nr.is_empty() { None } else { Some(nr) }; }
+        if let Some(nw) = new_workos_cursor_session_token { acc.workos_cursor_session_token = if nw.is_empty() { None } else { Some(nw) }; }
+        if let Some(nu) = new_username { acc.username = if nu.is_empty() { None } else { Some(nu) }; }
         if let Some(nt) = new_tags { acc.tags = nt; }
         if let Some(nm) = new_machine_ids {
             acc.machine_ids = serde_json::from_value(nm).ok();

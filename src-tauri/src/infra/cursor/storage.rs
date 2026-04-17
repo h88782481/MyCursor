@@ -85,6 +85,14 @@ impl<'a> StorageJson<'a> {
             .map(|s| s.to_string()))
     }
 
+    /// 读取当前 Refresh Token
+    pub fn read_refresh_token(&self) -> Result<Option<String>, AppError> {
+        let data = self.read_all()?;
+        Ok(data["cursorAuth/refreshToken"]
+            .as_str()
+            .map(|s| s.to_string()))
+    }
+
     /// 写入认证信息（邮箱 + Token + 全部关联字段）
     pub fn write_auth(&self, email: &str, token: &str) -> Result<(), AppError> {
         let mut data = self.read_all().unwrap_or_else(|_| serde_json::json!({}));

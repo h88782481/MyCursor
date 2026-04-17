@@ -116,9 +116,9 @@ export class AccountService {
       email,
       newEmail: newEmail || null,
       newToken: newToken || null,
-      newRefreshToken: newRefreshToken || null,
-      newWorkosCursorSessionToken: newWorkosSessionToken || null,
-      newUsername: newUsername || null,
+      newRefreshToken: newRefreshToken ?? null,
+      newWorkosCursorSessionToken: newWorkosSessionToken ?? null,
+      newUsername: newUsername ?? null,
       newTags: newTags ?? null,
       newMachineIds: newMachineIds ?? null,
     });

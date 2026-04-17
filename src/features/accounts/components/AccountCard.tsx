@@ -559,6 +559,9 @@ export const AccountCard = memo(
     if (prevProps.account.trial_days_remaining !== nextProps.account.trial_days_remaining) return false;
     if (prevProps.account.username !== nextProps.account.username) return false;
     if (JSON.stringify(prevProps.account.tags) !== JSON.stringify(nextProps.account.tags)) return false;
+    if (prevProps.account.token !== nextProps.account.token) return false;
+    if (prevProps.account.refresh_token !== nextProps.account.refresh_token) return false;
+    if (prevProps.account.workos_cursor_session_token !== nextProps.account.workos_cursor_session_token) return false;
     return true;
   }
 );

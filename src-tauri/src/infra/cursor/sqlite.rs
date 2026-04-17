@@ -45,6 +45,11 @@ impl<'a> CursorSqlite<'a> {
         self.get_value("cursorAuth/accessToken")
     }
 
+    /// 从 SQLite 读取当前 Refresh Token
+    pub fn read_refresh_token(&self) -> Result<Option<String>, AppError> {
+        self.get_value("cursorAuth/refreshToken")
+    }
+
     /// 读取 serviceMachineId
     pub fn read_service_machine_id(&self) -> Result<Option<String>, AppError> {
         if !self.path.exists() {

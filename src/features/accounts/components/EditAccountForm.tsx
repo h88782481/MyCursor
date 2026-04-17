@@ -93,8 +93,16 @@ export const EditAccountForm = memo(({ isOpen, account, onSuccess, onCancel, onT
     if (!account) return;
 
     try {
-      if (editEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail)) {
+      if (!editEmail.trim()) {
+        onToast("邮箱地址不能为空", "error");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editEmail)) {
         onToast("请输入有效的邮箱地址", "error");
+        return;
+      }
+      if (!editToken.trim()) {
+        onToast("Access Token 不能为空", "error");
         return;
       }
 
@@ -113,9 +121,9 @@ export const EditAccountForm = memo(({ isOpen, account, onSuccess, onCancel, onT
         account.email,
         editEmail !== account.email ? editEmail : undefined,
         editToken || undefined,
-        editRefreshToken || undefined,
-        editWorkosSessionToken || undefined,
-        editUsername || undefined,
+        editRefreshToken,
+        editWorkosSessionToken,
+        editUsername,
         editTags,
         machineIdsToSave
       );

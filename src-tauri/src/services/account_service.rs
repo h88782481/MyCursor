@@ -24,12 +24,23 @@ impl AccountService {
     // === 列表 ===
 
     /// 获取完整账号列表（合并本地缓存与 Cursor 当前账号）
+    ///
+    /// 若本地检测到已登录的 Cursor 账号且不在列表中，自动导入并持久化。
     pub fn list_all(&self) -> Result<AccountListResult, AppError> {
         let mut accounts = self.store.load_all()?;
         let current = self.read_current_from_cursor()?;
 
         if let Some(ref cur) = current {
+            let is_new = !accounts.iter().any(|a| a.email == cur.email);
             self.merge_current(&mut accounts, cur);
+
+            if is_new {
+                if let Err(e) = self.store.save_all(&accounts) {
+                    log_error!("自动导入本地账号失败: {}", e);
+                } else {
+                    log_info!("自动导入本地登录账号: {}", cur.email);
+                }
+            }
         }
 
         Ok(AccountListResult {
@@ -273,12 +284,26 @@ impl AccountService {
     // === 内部方法 ===
 
     /// 从 Cursor 本地文件读取当前账号
+    ///
+    /// 提取信息：email、access_token、refresh_token（SQLite 优先，storage.json 回退）、
+    /// 以及 7 项机器码（storage.json + state.vscdb + 注册表）。
     fn read_current_from_cursor(&self) -> Result<Option<AccountInfo>, AppError> {
-        let email = self.cursor.storage().read_email()?;
-        let token = self.cursor.storage().read_token()?;
+        // SQLite 优先，storage.json 回退
+        let email = self.cursor.sqlite().read_email()
+            .ok().flatten()
+            .or_else(|| self.cursor.storage().read_email().ok().flatten());
+        let token = self.cursor.sqlite().read_token()
+            .ok().flatten()
+            .or_else(|| self.cursor.storage().read_token().ok().flatten());
 
         match (email, token) {
             (Some(email), Some(token)) => {
+                // 读取 refresh_token：SQLite 优先，storage.json 回退
+                let refresh_token = self.cursor.sqlite().read_refresh_token()
+                    .ok().flatten()
+                    .or_else(|| self.cursor.storage().read_refresh_token().ok().flatten())
+                    .filter(|t| !t.is_empty());
+
                 let saved = self.store.load_all().unwrap_or_default();
                 if let Some(existing) = saved.iter().find(|a| a.email == email) {
                     Ok(Some(AccountInfo {
@@ -287,11 +312,17 @@ impl AccountService {
                         ..existing.clone()
                     }))
                 } else {
+                    // 新账号：读取完整的 7 项机器码
                     let current_ids = self.cursor.read_full_machine_ids().ok();
+                    log_debug!("检测到本地登录账号: {}, refresh_token: {}, machine_ids: {}",
+                        email,
+                        if refresh_token.is_some() { "有" } else { "无" },
+                        if current_ids.is_some() { "有" } else { "无" }
+                    );
                     Ok(Some(AccountInfo {
                         email,
                         token,
-                        refresh_token: None,
+                        refresh_token,
                         workos_cursor_session_token: None,
                         is_current: true,
                         created_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
