@@ -46,6 +46,8 @@ export interface AccountListResult {
   accounts: AccountInfo[];
   current_account: AccountInfo | null;
   message: string;
+  local_data_changed?: boolean;
+  local_fresh_account?: AccountInfo | null;
 }
 
 export interface SwitchAccountResult {

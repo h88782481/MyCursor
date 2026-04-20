@@ -29,17 +29,32 @@ impl AccountService {
     pub fn list_all(&self) -> Result<AccountListResult, AppError> {
         let mut accounts = self.store.load_all()?;
         let current = self.read_current_from_cursor()?;
+        let mut local_data_changed = false;
+        let mut local_fresh_account = None;
 
         if let Some(ref cur) = current {
             let is_new = !accounts.iter().any(|a| a.email == cur.email);
-            self.merge_current(&mut accounts, cur);
 
             if is_new {
+                self.merge_current(&mut accounts, cur);
                 if let Err(e) = self.store.save_all(&accounts) {
                     log_error!("自动导入本地账号失败: {}", e);
                 } else {
                     log_info!("自动导入本地登录账号: {}", cur.email);
                 }
+            } else {
+                // 已有账号：比较本地数据与缓存是否一致
+                if let Some(existing) = accounts.iter().find(|a| a.email == cur.email) {
+                    if existing.token != cur.token
+                        || existing.refresh_token != cur.refresh_token
+                        || existing.machine_ids != cur.machine_ids
+                    {
+                        local_data_changed = true;
+                        local_fresh_account = Some(cur.clone());
+                        log_info!("检测到本地账号数据变更: {}", cur.email);
+                    }
+                }
+                self.merge_current(&mut accounts, cur);
             }
         }
 
@@ -48,6 +63,8 @@ impl AccountService {
             accounts,
             current_account: current,
             message: "账号列表获取成功".to_string(),
+            local_data_changed,
+            local_fresh_account,
         })
     }
 
@@ -304,16 +321,19 @@ impl AccountService {
                     .or_else(|| self.cursor.storage().read_refresh_token().ok().flatten())
                     .filter(|t| !t.is_empty());
 
+                // 始终读取本地 7 项机器码，用于新账号创建或已有账号比对
+                let current_ids = self.cursor.read_full_machine_ids().ok();
+
                 let saved = self.store.load_all().unwrap_or_default();
                 if let Some(existing) = saved.iter().find(|a| a.email == email) {
                     Ok(Some(AccountInfo {
                         is_current: true,
                         token,
+                        refresh_token,
+                        machine_ids: current_ids.or_else(|| existing.machine_ids.clone()),
                         ..existing.clone()
                     }))
                 } else {
-                    // 新账号：读取完整的 7 项机器码
-                    let current_ids = self.cursor.read_full_machine_ids().ok();
                     log_debug!("检测到本地登录账号: {}, refresh_token: {}, machine_ids: {}",
                         email,
                         if refresh_token.is_some() { "有" } else { "无" },

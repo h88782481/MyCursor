@@ -1,11 +1,14 @@
-import { useEffect, useRef } from "react";
-import type { AccountsPageToastState } from "./useAccountsPageState";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { AccountService } from "@/services/accountService";
+import type { AccountInfo } from "@/types/account";
+import type { AccountsPageToastState, AccountsPageConfirmDialogState } from "./useAccountsPageState";
 
 interface UseAccountsPageEffectsParams {
   loadAccounts: () => Promise<unknown>;
   addAccountToList: (email: string) => Promise<unknown>;
   toast: AccountsPageToastState | null;
   setToast: (toast: AccountsPageToastState | null) => void;
+  setConfirmDialog: Dispatch<SetStateAction<AccountsPageConfirmDialogState>>;
 }
 
 export function useAccountsPageEffects({
@@ -13,15 +16,55 @@ export function useAccountsPageEffects({
   addAccountToList,
   toast,
   setToast,
+  setConfirmDialog,
 }: UseAccountsPageEffectsParams) {
   const cleanupListenersRef = useRef<(() => void) | null>(null);
   const addAccountToListRef = useRef(addAccountToList);
   addAccountToListRef.current = addAccountToList;
   const setToastRef = useRef(setToast);
   setToastRef.current = setToast;
+  const setConfirmDialogRef = useRef(setConfirmDialog);
+  setConfirmDialogRef.current = setConfirmDialog;
+  const loadAccountsRef = useRef(loadAccounts);
+  loadAccountsRef.current = loadAccounts;
 
   useEffect(() => {
-    void loadAccounts();
+    const init = async () => {
+      const result = await loadAccounts() as {
+        success?: boolean;
+        local_data_changed?: boolean;
+        local_fresh_account?: AccountInfo | null;
+      } | undefined;
+
+      if (result?.local_data_changed && result.local_fresh_account) {
+        const fresh = result.local_fresh_account;
+        setConfirmDialogRef.current({
+          show: true,
+          title: "检测到本地账号数据变更",
+          message: `本地 Cursor 的账号 ${fresh.email} 数据（Token/机器码等）与缓存不一致，是否用本地最新数据覆盖？`,
+          type: "info",
+          confirmText: "覆盖更新",
+          onConfirm: async () => {
+            setConfirmDialogRef.current((prev) => ({ ...prev, show: false }));
+            try {
+              await AccountService.addAccount(
+                fresh.email,
+                fresh.token,
+                fresh.refresh_token || undefined,
+                fresh.workos_cursor_session_token || undefined,
+                undefined,
+                fresh.machine_ids ? JSON.stringify(fresh.machine_ids) : undefined,
+              );
+              await loadAccountsRef.current();
+              setToastRef.current({ message: `${fresh.email} 数据已更新`, type: "success" });
+            } catch (error) {
+              setToastRef.current({ message: `更新失败: ${error}`, type: "error" });
+            }
+          },
+        });
+      }
+    };
+    void init();
 
     const setupListeners = async () => {
       const { listen } = await import("@tauri-apps/api/event");

@@ -103,7 +103,12 @@ export const useAccountManagement = () => {
         accounts: finalAccounts,
       });
 
-      return { success: true, hasIncompleteCache };
+      return {
+        success: true,
+        hasIncompleteCache,
+        local_data_changed: result.local_data_changed || false,
+        local_fresh_account: result.local_fresh_account || null,
+      };
     } catch (error) {
       console.error("Failed to load accounts:", error);
       return { success: false, message: "加载账户列表失败" };

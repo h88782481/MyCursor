@@ -63,13 +63,14 @@ export class AccountService {
     }
   }
 
-  /** 添加新账户（支持传入标签） */
+  /** 添加新账户（支持传入标签和机器码） */
   static async addAccount(
     email: string,
     token: string,
     refreshToken?: string,
     workosSessionToken?: string,
-    tags?: string[]
+    tags?: string[],
+    machineIdsJson?: string
   ): Promise<AddAccountResult> {
     return await invoke<AddAccountResult>("add_account", {
       email,
@@ -77,6 +78,7 @@ export class AccountService {
       refreshToken: refreshToken || null,
       workosCursorSessionToken: workosSessionToken || null,
       tags: tags && tags.length > 0 ? tags : null,
+      machineIdsJson: machineIdsJson || null,
     });
   }
 

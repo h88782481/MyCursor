@@ -75,6 +75,7 @@ const AccountsPage: React.FC = () => {
     addAccountToList,
     toast,
     setToast,
+    setConfirmDialog,
   });
 
   const {

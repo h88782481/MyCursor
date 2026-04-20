@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// 机器标识集合（对应 Cursor 的 storage.json 中的 ID 字段）
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct MachineIds {
     #[serde(rename = "telemetry.devDeviceId")]
     pub dev_device_id: String,

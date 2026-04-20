@@ -41,6 +41,12 @@ pub struct AccountListResult {
     pub accounts: Vec<AccountInfo>,
     pub current_account: Option<AccountInfo>,
     pub message: String,
+    /// 本地检测到的已有账号数据与缓存不一致
+    #[serde(default)]
+    pub local_data_changed: bool,
+    /// 本地检测到的最新账号数据（仅当 local_data_changed 为 true 时有值）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_fresh_account: Option<AccountInfo>,
 }
 
 /// 账号切换结果
