@@ -253,8 +253,9 @@ impl TelemetryPatcher {
 
     /// `unary(t,n,r,s,o,i,a){` → `_getTransportForService` → `transport.unary`（与 patch-telemetry.sh 一致）
     fn patch_extension_main_upstream(content: &str) -> Option<String> {
+        // 必须用 r#"..."#：模式中包含 JS 源码里的双引号，普通 r"..." 会在 \" 处被截断
         let Ok(re) = Regex::new(
-            r"unary\(t,n,r,s,o,i,a\)\{const ([a-zA-Z_$][a-zA-Z0-9_$]*)=e\._getTransportForService\(t\.typeName,n\.name\);if\(void 0===\1\)throw new Error\(\"INVARIANT VIOLATION: Transport is undefined for service: \"\+t\.typeName\);return \1\.transport\.unary\(t,n,r,s,o,i,a\)\}",
+            r#"unary\(t,n,r,s,o,i,a\)\{const ([a-zA-Z_$][a-zA-Z0-9_$]*)=e\._getTransportForService\(t\.typeName,n\.name\);if\(void 0===\1\)throw new Error\("INVARIANT VIOLATION: Transport is undefined for service: "\+t\.typeName\);return \1\.transport\.unary\(t,n,r,s,o,i,a\)\}"#,
         ) else {
             return None;
         };
