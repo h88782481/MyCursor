@@ -33,7 +33,7 @@ export function useAdvancedFeaturesActions({
   const handleRefreshTelemetryStatus = useCallback(async () => {
     setTelemetryLoading(true);
     try {
-      const result = await invoke("get_telemetry_patch_status");
+      const result = await invoke<TelemetryPatchStatus>("get_telemetry_patch_status");
       setTelemetryStatus(result);
     } catch {
       showError("获取遥测补丁状态失败");

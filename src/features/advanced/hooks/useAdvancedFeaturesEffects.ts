@@ -25,7 +25,7 @@ export function useAdvancedFeaturesEffects({
     setIsWindows(isWindowsOS);
 
     setTelemetryLoading(true);
-    invoke("get_telemetry_patch_status")
+    invoke<TelemetryPatchStatus>("get_telemetry_patch_status")
       .then((result) => setTelemetryStatus(result))
       .catch(() => {})
       .finally(() => setTelemetryLoading(false));
