@@ -5,8 +5,6 @@ import type { IdentityStep, WindowsUserInfo } from "./useIdentityPageState";
 export type { WindowsUserInfo };
 
 export interface IdentityPageActionsContext {
-  customCursorPath: string;
-  autoUpdateDisabled: boolean | null;
   selectedBackup: BackupInfo | null;
   setCurrentStep: Dispatch<SetStateAction<IdentityStep>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
@@ -17,11 +15,6 @@ export interface IdentityPageActionsContext {
   setResetResult: Dispatch<SetStateAction<ResetResult | null>>;
   setCurrentMachineIds: Dispatch<SetStateAction<MachineIds | null>>;
   setMachineIdFileContent: Dispatch<SetStateAction<string | null>>;
-  setCurrentCustomPath: Dispatch<SetStateAction<string | null>>;
-  setCustomCursorPath: Dispatch<SetStateAction<string>>;
-  setAutoUpdateDisabled: Dispatch<SetStateAction<boolean | null>>;
-  setWindowsUsers: Dispatch<SetStateAction<WindowsUserInfo[]>>;
-  setSyncingUser: Dispatch<SetStateAction<string | null>>;
   showSuccess: (message: string) => void;
   showError: (message: string) => void;
   showConfirm: (options: {

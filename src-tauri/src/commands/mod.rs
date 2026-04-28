@@ -6,4 +6,5 @@ pub mod account;
 pub mod analytics;
 pub mod seamless;
 pub mod system;
+pub mod telemetry;
 pub mod window;

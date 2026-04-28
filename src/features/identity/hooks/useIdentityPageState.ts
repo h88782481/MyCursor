@@ -8,8 +8,7 @@ export type IdentityStep =
   | "confirm"
   | "result"
   | "reset"
-  | "complete_reset"
-  | "custom_path_config";
+  | "complete_reset";
 
 export type WindowsUserInfo = { username: string; has_cursor: boolean };
 
@@ -23,12 +22,6 @@ export function useIdentityPageState() {
   const [machineIdFileContent, setMachineIdFileContent] = useState<string | null>(null);
   const [restoreResult, setRestoreResult] = useState<RestoreResult | null>(null);
   const [resetResult, setResetResult] = useState<ResetResult | null>(null);
-  const [customCursorPath, setCustomCursorPath] = useState("");
-  const [currentCustomPath, setCurrentCustomPath] = useState<string | null>(null);
-  const [isWindows, setIsWindows] = useState(false);
-  const [autoUpdateDisabled, setAutoUpdateDisabled] = useState<boolean | null>(null);
-  const [windowsUsers, setWindowsUsers] = useState<WindowsUserInfo[]>([]);
-  const [syncingUser, setSyncingUser] = useState<string | null>(null);
 
   return {
     currentStep,
@@ -49,17 +42,5 @@ export function useIdentityPageState() {
     setRestoreResult,
     resetResult,
     setResetResult,
-    customCursorPath,
-    setCustomCursorPath,
-    currentCustomPath,
-    setCurrentCustomPath,
-    isWindows,
-    setIsWindows,
-    autoUpdateDisabled,
-    setAutoUpdateDisabled,
-    windowsUsers,
-    setWindowsUsers,
-    syncingUser,
-    setSyncingUser,
   };
 }

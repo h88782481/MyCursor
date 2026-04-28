@@ -259,6 +259,11 @@ pub fn run() {
             commands::system::get_close_behavior,
             commands::system::set_close_behavior,
 
+            // === Telemetry 命令 ===
+            commands::telemetry::get_telemetry_patch_status,
+            commands::telemetry::apply_telemetry_patch,
+            commands::telemetry::restore_telemetry_patch,
+
             // === Window 命令 ===
             commands::window::generate_pkce_params,
             commands::window::open_cancel_subscription_page,

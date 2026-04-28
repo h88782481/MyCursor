@@ -4,7 +4,6 @@ import {
   BackupList,
   BackupPreviewCard,
   CurrentMachineIdsCard,
-  CustomPathConfig,
   IdentityMenu,
   ResultDisplay,
 } from "./components";
@@ -33,45 +32,19 @@ const IdentityPage = () => {
     setRestoreResult,
     resetResult,
     setResetResult,
-    customCursorPath,
-    setCustomCursorPath,
-    currentCustomPath,
-    setCurrentCustomPath,
-    isWindows,
-    setIsWindows,
-    autoUpdateDisabled,
-    setAutoUpdateDisabled,
-    windowsUsers,
-    setWindowsUsers,
-    syncingUser,
-    setSyncingUser,
   } = useIdentityPageState();
 
   const { toasts, removeToast, showSuccess, showError } = useToast();
   const { showConfirm, ConfirmDialog } = useConfirmDialog();
 
   const {
-    loadAutoUpdateStatus,
-    loadCustomCursorPath,
     loadCurrentMachineIds,
     loadBackups,
     handleBackupSelect,
     handleRestore,
-    handleDeleteBackup,
-    handleOpenLogDirectory,
-    handleGetLogPath,
-    handleSetCustomPath,
-    handleClearCustomPath,
-    handleFillDetectedPath,
-    handleBrowsePath,
-    handleToggleAutoUpdate,
-    handleDetectWindowsUsers,
     showResetConfirm,
     showCompleteResetConfirm,
-    showSyncUserConfirm,
   } = useIdentityPageActions({
-    customCursorPath,
-    autoUpdateDisabled,
     selectedBackup,
     setCurrentStep,
     setLoading,
@@ -82,11 +55,6 @@ const IdentityPage = () => {
     setResetResult,
     setCurrentMachineIds,
     setMachineIdFileContent,
-    setCurrentCustomPath,
-    setCustomCursorPath,
-    setAutoUpdateDisabled,
-    setWindowsUsers,
-    setSyncingUser,
     showSuccess,
     showError,
     showConfirm,
@@ -94,16 +62,12 @@ const IdentityPage = () => {
 
   useIdentityPageEffects({
     loadCurrentMachineIds,
-    loadAutoUpdateStatus,
-    loadCustomCursorPath,
-    setIsWindows,
   });
 
   const {
     isInitialLoading,
     showCurrentIdsCard,
     showMenu,
-    showCustomPathConfig,
     showBackupSelect,
     showBackupPreview,
     showRestoreProgress,
@@ -159,33 +123,9 @@ const IdentityPage = () => {
       {showMenu && (
         <IdentityMenu
           loading={loading}
-          autoUpdateDisabled={autoUpdateDisabled}
-          isWindows={isWindows}
-          windowsUsers={windowsUsers}
-          syncingUser={syncingUser}
-          currentCustomPath={currentCustomPath}
           onLoadBackups={loadBackups}
           onShowResetConfirm={showResetConfirm}
           onShowCompleteResetConfirm={showCompleteResetConfirm}
-          onToggleAutoUpdate={handleToggleAutoUpdate}
-          onDetectWindowsUsers={handleDetectWindowsUsers}
-          onSyncUser={showSyncUserConfirm}
-          onGetLogPath={handleGetLogPath}
-          onOpenLogDirectory={handleOpenLogDirectory}
-          onOpenCustomPathConfig={() => setCurrentStep("custom_path_config")}
-        />
-      )}
-
-      {showCustomPathConfig && (
-        <CustomPathConfig
-          customCursorPath={customCursorPath}
-          currentCustomPath={currentCustomPath}
-          onPathChange={setCustomCursorPath}
-          onSetPath={handleSetCustomPath}
-          onFillDetectedPath={handleFillDetectedPath}
-          onClearPath={handleClearCustomPath}
-          onBrowsePath={handleBrowsePath}
-          onBack={() => setCurrentStep("menu")}
         />
       )}
 
@@ -193,7 +133,6 @@ const IdentityPage = () => {
         <BackupList
           backups={backups}
           onBackupSelect={handleBackupSelect}
-          onDeleteBackup={handleDeleteBackup}
           onBack={() => setCurrentStep("menu")}
         />
       )}

@@ -31,7 +31,6 @@ export function useIdentityPageViewModel({
     [currentMachineIds, currentStep]
   );
   const showMenu = useMemo(() => currentStep === "menu", [currentStep]);
-  const showCustomPathConfig = useMemo(() => currentStep === "custom_path_config", [currentStep]);
   const showBackupSelect = useMemo(() => currentStep === "select", [currentStep]);
   const showBackupPreview = useMemo(
     () => currentStep === "preview" && Boolean(selectedBackup && selectedIds),
@@ -51,7 +50,6 @@ export function useIdentityPageViewModel({
     isInitialLoading,
     showCurrentIdsCard,
     showMenu,
-    showCustomPathConfig,
     showBackupSelect,
     showBackupPreview,
     showRestoreProgress,
