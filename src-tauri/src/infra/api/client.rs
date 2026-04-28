@@ -213,8 +213,43 @@ impl CursorApiClient {
         let text = resp.text().await?;
         match serde_json::from_str::<FilteredUsageEventsData>(&text) {
             Ok(data) => Ok(Some(data)),
-            Err(_) => Ok(None),
+            Err(e) => {
+                log_error!("get_filtered_usage_events 结构化解析失败（已尝试容错）: {}", e);
+                Self::parse_filtered_usage_events_lenient_json(&text)
+            }
         }
+    }
+
+    /// 当 Cursor API 微调字段格式时仍能尽量取出事件列表
+    fn parse_filtered_usage_events_lenient_json(
+        text: &str,
+    ) -> Result<Option<FilteredUsageEventsData>, AppError> {
+        let v: serde_json::Value =
+            serde_json::from_str(text).map_err(|e| AppError::Internal(e.to_string()))?;
+        let total = v
+            .get("totalUsageEventsCount")
+            .and_then(|x| {
+                x.as_i64().or_else(|| x.as_u64().map(|u| u as i64)).or_else(|| {
+                    x.as_f64().map(|f| f as i64)
+                })
+            })
+            .unwrap_or(0) as i32;
+        let Some(arr) = v.get("usageEventsDisplay").and_then(|x| x.as_array()) else {
+            return Ok(None);
+        };
+        let mut usage_events_display = Vec::with_capacity(arr.len());
+        for item in arr {
+            if let Ok(ev) = serde_json::from_value::<UsageEventDisplay>(item.clone()) {
+                usage_events_display.push(ev);
+            }
+        }
+        if usage_events_display.is_empty() && total > 0 {
+            log_error!("usageEventsDisplay 中无可用事件条目（共 {}）", total);
+        }
+        Ok(Some(FilteredUsageEventsData {
+            total_usage_events_count: total,
+            usage_events_display,
+        }))
     }
 }
 

@@ -13,7 +13,7 @@ export function useUsageEvents(
   return useQuery({
     queryKey: ["usage", "events", sessionToken, startDate, endDate, page],
     queryFn: () =>
-      invoke("get_usage_events", { token: sessionToken, teamId: 0, startDate, endDate, page: page ?? 0, pageSize: pageSize ?? 50 }),
+      invoke("get_usage_events", { token: sessionToken, teamId: -1, startDate, endDate, page: page ?? 0, pageSize: pageSize ?? 50 }),
     enabled: !!sessionToken,
     staleTime: 5 * 60_000,
   });
@@ -28,7 +28,7 @@ export function useAllUsageEvents(
   return useQuery({
     queryKey: ["usage", "all-events", sessionToken, startDate, endDate],
     queryFn: () =>
-      invoke("get_events_v2", { token: sessionToken, teamId: "0", startDate, endDate }),
+      invoke("get_events_v2", { token: sessionToken, teamId: "-1", startDate, endDate }),
     enabled: !!sessionToken,
     staleTime: 5 * 60_000,
   });

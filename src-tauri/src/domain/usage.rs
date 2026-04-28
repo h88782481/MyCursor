@@ -1,7 +1,25 @@
 /// 用量统计领域模型
 ///
 /// 包含聚合用量、模型用量、用户分析等纯数据结构。
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Cursor 事件 `timestamp` 可能是 ISO 字符串或毫秒数字
+mod ts_string {
+    use super::*;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v = serde_json::Value::deserialize(deserializer)?;
+        match v {
+            serde_json::Value::String(s) => Ok(s),
+            serde_json::Value::Number(n) => Ok(n.to_string()),
+            serde_json::Value::Null => Ok("0".into()),
+            _ => Ok(v.to_string()),
+        }
+    }
+}
 
 /// 聚合用量数据
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
@@ -127,23 +145,34 @@ pub struct FilteredUsageEventsData {
 /// 单条使用事件展示数据
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct UsageEventDisplay {
+    #[serde(deserialize_with = "ts_string::deserialize")]
     pub timestamp: String,
+    #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub kind: String,
     #[serde(rename = "requestsCosts", default)]
     pub requests_costs: Option<f64>,
-    #[serde(rename = "usageBasedCosts")]
-    pub usage_based_costs: String,
-    #[serde(rename = "isTokenBasedCall")]
+    /// API 可能缺省或为 null
+    #[serde(rename = "usageBasedCosts", default)]
+    pub usage_based_costs: Option<String>,
+    #[serde(rename = "isTokenBasedCall", default)]
     pub is_token_based_call: bool,
     #[serde(rename = "tokenUsage", default)]
     pub token_usage: Option<TokenUsageDetail>,
-    #[serde(rename = "owningUser")]
+    #[serde(rename = "owningUser", default)]
     pub owning_user: String,
+    /// 与 tokenUsage.totalCents 等价优先级，顶层计费（美分，浮点）
+    #[serde(rename = "chargedCents", default)]
+    pub charged_cents: Option<f64>,
+    #[serde(rename = "cursorTokenFee", default)]
+    pub cursor_token_fee: Option<f64>,
+    #[serde(rename = "maxMode", default)]
+    pub max_mode: Option<bool>,
 }
 
 /// Token 使用详情
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
 pub struct TokenUsageDetail {
     #[serde(rename = "inputTokens")]
     pub input_tokens: Option<i32>,

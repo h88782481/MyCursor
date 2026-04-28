@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import type { DateRange } from "../types/usage";
 import { AggregatedUsageDisplay } from "./AggregatedUsageDisplay";
 import { UsageDetailsModal } from "./UsageDetailsModal";
@@ -26,8 +26,6 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
   const [localUsageData, setLocalUsageData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [correctedTotalCost, setCorrectedTotalCost] = useState<number | null>(null); // 来自图表的正确总费用
-  const [correctedModelCosts, setCorrectedModelCosts] = useState<Record<string, number> | null>(null); // 来自图表的各模型正确费用
   const [refreshKey, setRefreshKey] = useState(0); // 用于触发子组件重新加载
   const [isRefreshing, setIsRefreshing] = useState(false); // 防止重复刷新
   const { config } = useTheme(); // 获取主题配置
@@ -148,7 +146,8 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
         try {
           const eventsResponse: any = await invoke("get_events_v2", {
             token,
-            teamId: "0",  // Tauri 会自动将 camelCase 转换为 snake_case
+            // 与 get_aggregated_usage / 刷新聚合用量 的 teamId 一致（个人用量用 -1）
+            teamId: "-1",
             startDate: dateRange.startDate.toISOString(),
             endDate: dateRange.endDate.toISOString(),
           });
@@ -158,18 +157,30 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
               `✅ 获取到 ${eventsResponse.events.length} 条事件数据`
             );
 
+            /** API：usageBasedCosts 为 "-" | "$35.11" */
+            const parseUsageBasedCostsToCents = (raw: unknown): number | null => {
+              if (raw == null) return null;
+              const s = String(raw).trim();
+              if (!s || s === "-") return null;
+              const m = s.match(/\$\s*([\d,]+\.?\d*)/);
+              if (m) {
+                const dollars = parseFloat(m[1].replace(/,/g, ""));
+                return Number.isFinite(dollars) ? dollars * 100 : null;
+              }
+              const n = parseFloat(s);
+              return Number.isFinite(n) ? n * 100 : null;
+            };
+
             // 转换后端数据格式为前端期望的格式（使用reduce优化性能）
             const convertedEvents = eventsResponse.events.reduce((acc: any[], event: any) => {
-              // 解析时间戳（支持多种格式）
+              // 解析时间戳（支持 ISO、毫秒、秒级 Unix）
               let timestamp = 0;
-              
+
               if (typeof event.timestamp === "string") {
-                // 如果是纯数字字符串，直接转换
                 const parsed = parseInt(event.timestamp, 10);
-                if (!isNaN(parsed)) {
+                if (!isNaN(parsed) && String(parsed) === event.timestamp.trim()) {
                   timestamp = parsed;
                 } else {
-                  // 否则尝试作为 ISO 日期解析
                   const dateTimestamp = new Date(event.timestamp).getTime();
                   if (!isNaN(dateTimestamp)) {
                     timestamp = dateTimestamp;
@@ -178,20 +189,26 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
               } else if (typeof event.timestamp === "number") {
                 timestamp = event.timestamp;
               }
-              
-              // 只处理有效的时间戳
-              if (timestamp <= 0) {
+
+              if (timestamp > 0 && timestamp < 1e12) {
+                timestamp *= 1000;
+              }
+
+              if (timestamp <= 0 || !Number.isFinite(timestamp)) {
                 return acc;
               }
-              
-              // 提取费用（优先从 tokenUsage.totalCents，否则从 usageBasedCosts）
+
               let costCents = 0;
               const tokenUsage = event.tokenUsage;
-              if (tokenUsage && typeof tokenUsage.totalCents === 'number') {
+              if (tokenUsage && typeof tokenUsage.totalCents === "number" && Number.isFinite(tokenUsage.totalCents)) {
                 costCents = tokenUsage.totalCents;
-              } else if (typeof event.usageBasedCosts === 'string') {
-                const parsedCost = parseFloat(event.usageBasedCosts);
-                costCents = !isNaN(parsedCost) ? parsedCost * 100 : 0; // 转换美元为美分
+              } else if (typeof event.chargedCents === "number" && Number.isFinite(event.chargedCents)) {
+                costCents = event.chargedCents;
+              } else {
+                const fromUbc = parseUsageBasedCostsToCents(event.usageBasedCosts);
+                if (fromUbc != null) {
+                  costCents = fromUbc;
+                }
               }
 
               acc.push({
@@ -372,33 +389,6 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
   const formatDate = useCallback((date: Date): string => {
     return date.toISOString().split("T")[0];
   }, []);
-
-  // 使用 useMemo 优化聚合数据计算
-  const aggregatedUsageData = useMemo(() => {
-    if (!localUsageData) return null;
-
-    // 如果有图表计算的费用，使用图表数据（更准确）
-    if (correctedTotalCost !== null || correctedModelCosts !== null) {
-      return {
-        ...localUsageData,
-        total_cost_cents: correctedTotalCost !== null ? correctedTotalCost : localUsageData.total_cost_cents,
-        aggregations: correctedModelCosts && localUsageData.aggregations
-          ? localUsageData.aggregations.map((agg: any) => {
-              const correctedCost = correctedModelCosts[agg.model_intent];
-              if (correctedCost !== undefined) {
-                return {
-                  ...agg,
-                  total_cents: correctedCost / 100,
-                };
-              }
-              return agg;
-            })
-          : localUsageData.aggregations,
-      };
-    }
-
-    return localUsageData;
-  }, [localUsageData, correctedTotalCost, correctedModelCosts]);
 
   // 检测是否开启了自定义背景或透明主题
   const hasCustomBackground = !!(config.customBackground?.enabled && config.customBackground?.imageUrl);
@@ -653,10 +643,10 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
         )}
 
         {/* Usage Data Display */}
-        {localUsageData && !loading && aggregatedUsageData && (
+        {localUsageData && !loading && (
           <>
           <AggregatedUsageDisplay
-              aggregatedUsage={aggregatedUsageData}
+              aggregatedUsage={localUsageData}
             showTitle={false}
             variant="detailed"
           />
@@ -688,20 +678,7 @@ export const UsageDisplay: React.FC<UsageDisplayProps> = ({
                   </div>
                 }
               >
-                <EventBasedUsageChart 
-                  key={refreshKey} 
-                  email={email}
-                  onTotalCostCalculated={(totalCost) => {
-                    // 接收图表计算的正确总费用
-                    console.log("📊 图表计算的正确总费用（cents）:", totalCost);
-                    setCorrectedTotalCost(totalCost);
-                  }}
-                  onModelCostsCalculated={(modelCosts) => {
-                    // 接收各模型的正确费用
-                    console.log("📊 各模型的正确费用（cents）:", modelCosts);
-                    setCorrectedModelCosts(modelCosts);
-                  }}
-                />
+                <EventBasedUsageChart key={refreshKey} email={email} />
               </Suspense>
             </div>
           </>
