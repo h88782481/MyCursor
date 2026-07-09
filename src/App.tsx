@@ -7,12 +7,11 @@ import { hybridStorage } from "@/utils/hybridStorage";
 
 const MachineIdPage = lazy(() => import("@/features/identity/IdentityPage"));
 const AccountsPage = lazy(() => import("@/features/accounts/AccountsPage"));
-const UsageStatsPage = lazy(() => import("@/features/analytics/AnalyticsPage"));
 const SeamlessPage = lazy(() => import("@/features/seamless/SeamlessPage"));
 const AdvancedFeaturesPage = lazy(() => import("@/features/advanced/AdvancedFeaturesPage"));
 const SettingsPage = lazy(() => import("@/features/settings/SettingsPage"));
 
-type PageType = "machineId" | "account" | "seamless" | "usage" | "advanced" | "settings";
+type PageType = "machineId" | "account" | "seamless" | "advanced" | "settings";
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>("machineId");
@@ -164,18 +163,6 @@ function App() {
           </button>
 
           <button
-            onClick={() => setCurrentPage("usage")}
-            className={getNavButtonClass(currentPage === "usage")}
-            style={getNavButtonStyle(currentPage === "usage")}
-            title="用量统计"
-          >
-            <Icon name="chart" size={isSidebarCollapsed ? 24 : 20} />
-            {!isSidebarCollapsed && (
-              <span className="whitespace-nowrap">用量统计</span>
-            )}
-          </button>
-
-          <button
             onClick={() => setCurrentPage("advanced")}
             className={getNavButtonClass(currentPage === "advanced")}
             style={getNavButtonStyle(currentPage === "advanced")}
@@ -230,7 +217,6 @@ function App() {
               {currentPage === "machineId" && <MachineIdPage />}
               {currentPage === "account" && <AccountsPage />}
               {currentPage === "seamless" && <SeamlessPage />}
-              {currentPage === "usage" && <UsageStatsPage />}
               {currentPage === "advanced" && <AdvancedFeaturesPage />}
               {currentPage === "settings" && <SettingsPage />}
             </div>
