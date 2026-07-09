@@ -274,13 +274,13 @@ impl CursorApiClient {
                 })
             })
             .unwrap_or(0) as i32;
-        let Some(arr) = v.get("usageEventsDisplay").and_then(|x| x.as_array()) else {
-            return Ok(None);
-        };
-        let mut usage_events_display = Vec::with_capacity(arr.len());
-        for item in arr {
-            if let Ok(ev) = serde_json::from_value::<UsageEventDisplay>(item.clone()) {
-                usage_events_display.push(ev);
+        let mut usage_events_display = Vec::new();
+        if let Some(arr) = v.get("usageEventsDisplay").and_then(|x| x.as_array()) {
+            usage_events_display.reserve(arr.len());
+            for item in arr {
+                if let Ok(ev) = serde_json::from_value::<UsageEventDisplay>(item.clone()) {
+                    usage_events_display.push(ev);
+                }
             }
         }
         if usage_events_display.is_empty() && total > 0 {

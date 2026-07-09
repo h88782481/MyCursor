@@ -140,9 +140,9 @@ pub struct NameCount {
 /// 过滤的使用事件数据
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct FilteredUsageEventsData {
-    #[serde(rename = "totalUsageEventsCount")]
+    #[serde(rename = "totalUsageEventsCount", default)]
     pub total_usage_events_count: i32,
-    #[serde(rename = "usageEventsDisplay")]
+    #[serde(rename = "usageEventsDisplay", default)]
     pub usage_events_display: Vec<UsageEventDisplay>,
 }
 
