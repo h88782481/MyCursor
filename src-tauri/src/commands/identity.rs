@@ -233,23 +233,36 @@ pub async fn get_auto_update_status() -> Result<serde_json::Value, String> {
         let updater_path = get_cursor_updater_target_path()?;
         let updater_blocked = updater_path.is_file();
         let updater_exists = updater_path.exists() || updater_path.with_extension("bak").exists();
+        let yml_blocked = get_app_update_yml_path()
+            .map(|p| p.exists() && std::fs::metadata(&p).map(|m| m.len() == 0).unwrap_or(false))
+            .unwrap_or(false);
 
         Ok(serde_json::json!({
-            "disabled": updater_blocked,
+            "disabled": updater_blocked || yml_blocked,
             "path": updater_path.to_string_lossy(),
             "exists": updater_exists,
             "updater_blocked": updater_blocked,
+            "yml_blocked": yml_blocked,
         }))
     }
 
     #[cfg(not(target_os = "windows"))]
     {
+        let cache_blocked = get_cursor_updater_cache_path()
+            .map(|p| p.is_file())
+            .unwrap_or(false);
+        let yml_blocked = get_app_update_yml_path()
+            .map(|p| p.exists() && std::fs::metadata(&p).map(|m| m.len() == 0).unwrap_or(false))
+            .unwrap_or(false);
         let updater_path = get_cursor_updater_path()?;
-        let exists = updater_path.exists();
+        let updater_disabled = !updater_path.exists() && updater_path.with_extension("disabled").exists();
+
         Ok(serde_json::json!({
-            "disabled": !exists,
+            "disabled": cache_blocked || yml_blocked || updater_disabled,
             "path": updater_path.to_string_lossy(),
-            "exists": exists
+            "exists": updater_path.exists(),
+            "cache_blocked": cache_blocked,
+            "yml_blocked": yml_blocked,
         }))
     }
 }
@@ -264,6 +277,7 @@ pub async fn disable_auto_update() -> Result<serde_json::Value, String> {
         let updater_backup_path = updater_path.with_extension("bak");
         let mut details = Vec::new();
 
+        // 步骤 1: cursor-updater 目录 → 备份后用只读空文件占位
         if updater_path.is_dir() {
             if updater_backup_path.exists() {
                 if updater_backup_path.is_dir() {
@@ -280,6 +294,21 @@ pub async fn disable_auto_update() -> Result<serde_json::Value, String> {
             std::fs::write(&updater_path, b"").map_err(|e| e.to_string())?;
             details.push(format!("已创建更新器占位文件: {}", updater_path.display()));
         }
+        set_readonly(&updater_path, true, &mut details);
+
+        // 步骤 2: app-update.yml → 备份后替换为只读空文件
+        if let Ok(yml_path) = get_app_update_yml_path() {
+            if yml_path.exists() && std::fs::metadata(&yml_path).map(|m| m.len() > 0).unwrap_or(false) {
+                let bak = yml_path.with_extension("yml.bak");
+                if !bak.exists() {
+                    let _ = std::fs::copy(&yml_path, &bak);
+                    details.push(format!("已备份 app-update.yml: {}", bak.display()));
+                }
+                let _ = std::fs::write(&yml_path, b"");
+                details.push(format!("已清空 app-update.yml: {}", yml_path.display()));
+            }
+            set_readonly(&yml_path, true, &mut details);
+        }
 
         log_info!("已禁用自动更新");
         Ok(serde_json::json!({
@@ -291,15 +320,44 @@ pub async fn disable_auto_update() -> Result<serde_json::Value, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        let mut details = Vec::new();
+
+        // 步骤 1: cursor-updater 目录/文件处理
+        if let Ok(cache_path) = get_cursor_updater_cache_path() {
+            if cache_path.is_dir() {
+                let _ = std::fs::remove_dir_all(&cache_path);
+            }
+            if !cache_path.exists() {
+                let _ = std::fs::write(&cache_path, b"");
+                details.push(format!("已创建更新器占位文件: {}", cache_path.display()));
+            }
+            set_readonly(&cache_path, true, &mut details);
+        }
+
+        // 步骤 2: app-update.yml 处理
+        if let Ok(yml_path) = get_app_update_yml_path() {
+            if yml_path.exists() && std::fs::metadata(&yml_path).map(|m| m.len() > 0).unwrap_or(false) {
+                let bak = yml_path.with_extension("yml.bak");
+                if !bak.exists() {
+                    let _ = std::fs::copy(&yml_path, &bak);
+                    details.push(format!("已备份 app-update.yml: {}", bak.display()));
+                }
+                let _ = std::fs::write(&yml_path, b"");
+                details.push(format!("已清空 app-update.yml: {}", yml_path.display()));
+            }
+            set_readonly(&yml_path, true, &mut details);
+        }
+
+        // 步骤 3: 旧版 cursor-updater 可执行文件（兼容）
         let updater_path = get_cursor_updater_path()?;
         if updater_path.exists() {
             let disabled_path = updater_path.with_extension("disabled");
             std::fs::rename(&updater_path, &disabled_path).map_err(|e| e.to_string())?;
-            log_info!("已禁用自动更新");
-            Ok(serde_json::json!({"success": true, "message": "已禁用自动更新"}))
-        } else {
-            Ok(serde_json::json!({"success": true, "message": "更新器不存在，无需禁用"}))
+            details.push(format!("已禁用更新器: {}", disabled_path.display()));
         }
+
+        log_info!("已禁用自动更新");
+        Ok(serde_json::json!({"success": true, "message": "已禁用自动更新", "details": details}))
     }
 }
 
@@ -313,14 +371,26 @@ pub async fn enable_auto_update() -> Result<serde_json::Value, String> {
         let updater_backup_path = updater_path.with_extension("bak");
         let mut details = Vec::new();
 
+        // 恢复 cursor-updater 目录
+        set_readonly(&updater_path, false, &mut details);
         if updater_path.is_file() {
             std::fs::remove_file(&updater_path).map_err(|e| e.to_string())?;
             details.push(format!("已移除更新器占位文件: {}", updater_path.display()));
         }
-
         if updater_backup_path.exists() {
             std::fs::rename(&updater_backup_path, &updater_path).map_err(|e| e.to_string())?;
             details.push(format!("已恢复更新器目录: {}", updater_path.display()));
+        }
+
+        // 恢复 app-update.yml
+        if let Ok(yml_path) = get_app_update_yml_path() {
+            set_readonly(&yml_path, false, &mut details);
+            let bak = yml_path.with_extension("yml.bak");
+            if bak.exists() {
+                let _ = std::fs::copy(&bak, &yml_path);
+                let _ = std::fs::remove_file(&bak);
+                details.push(format!("已恢复 app-update.yml: {}", yml_path.display()));
+            }
         }
 
         log_info!("已启用自动更新");
@@ -333,15 +403,38 @@ pub async fn enable_auto_update() -> Result<serde_json::Value, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        let mut details = Vec::new();
+
+        // 恢复 cursor-updater 缓存目录
+        if let Ok(cache_path) = get_cursor_updater_cache_path() {
+            set_readonly(&cache_path, false, &mut details);
+            if cache_path.is_file() {
+                let _ = std::fs::remove_file(&cache_path);
+                details.push(format!("已移除更新器占位文件: {}", cache_path.display()));
+            }
+        }
+
+        // 恢复 app-update.yml
+        if let Ok(yml_path) = get_app_update_yml_path() {
+            set_readonly(&yml_path, false, &mut details);
+            let bak = yml_path.with_extension("yml.bak");
+            if bak.exists() {
+                let _ = std::fs::copy(&bak, &yml_path);
+                let _ = std::fs::remove_file(&bak);
+                details.push(format!("已恢复 app-update.yml: {}", yml_path.display()));
+            }
+        }
+
+        // 恢复旧版更新器可执行文件
         let updater_path = get_cursor_updater_path()?;
         let disabled_path = updater_path.with_extension("disabled");
         if disabled_path.exists() {
             std::fs::rename(&disabled_path, &updater_path).map_err(|e| e.to_string())?;
-            log_info!("已启用自动更新");
-            Ok(serde_json::json!({"success": true, "message": "已启用自动更新"}))
-        } else {
-            Ok(serde_json::json!({"success": true, "message": "更新器未被禁用"}))
+            details.push(format!("已恢复更新器: {}", updater_path.display()));
         }
+
+        log_info!("已启用自动更新");
+        Ok(serde_json::json!({"success": true, "message": "已启用自动更新", "details": details}))
     }
 }
 
@@ -384,7 +477,68 @@ fn get_cursor_updater_target_path() -> Result<std::path::PathBuf, String> {
     Ok(std::path::PathBuf::from(localappdata).join("cursor-updater"))
 }
 
-/// 获取 cursor-updater 路径
+/// 获取 cursor-updater 缓存路径（macOS/Linux）
+#[cfg(not(target_os = "windows"))]
+fn get_cursor_updater_cache_path() -> Result<std::path::PathBuf, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        Ok(std::path::PathBuf::from(home).join("Library/Caches/cursor-updater"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        Ok(std::path::PathBuf::from(home).join(".cache/cursor-updater"))
+    }
+}
+
+/// 获取 app-update.yml 路径
+fn get_app_update_yml_path() -> Result<std::path::PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let localappdata = std::env::var("LOCALAPPDATA").map_err(|e| e.to_string())?;
+        Ok(std::path::PathBuf::from(localappdata)
+            .join("Programs")
+            .join("cursor")
+            .join("resources")
+            .join("app-update.yml"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Ok(std::path::PathBuf::from("/Applications/Cursor.app/Contents/Resources/app-update.yml"))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+        let candidates = [
+            std::path::PathBuf::from(&home).join(".local/share/cursor/resources/app-update.yml"),
+            std::path::PathBuf::from("/opt/cursor/resources/app-update.yml"),
+            std::path::PathBuf::from("/usr/share/cursor/resources/app-update.yml"),
+        ];
+        for p in &candidates {
+            if p.exists() { return Ok(p.clone()); }
+        }
+        Ok(candidates[0].clone())
+    }
+}
+
+/// 设置文件只读/可写属性
+fn set_readonly(path: &std::path::Path, readonly: bool, details: &mut Vec<String>) {
+    if !path.exists() { return; }
+    if let Ok(meta) = std::fs::metadata(path) {
+        let mut perms = meta.permissions();
+        perms.set_readonly(readonly);
+        if std::fs::set_permissions(path, perms).is_ok() {
+            details.push(format!(
+                "已设置 {} 为{}",
+                path.display(),
+                if readonly { "只读" } else { "可写" }
+            ));
+        }
+    }
+}
+
+/// 获取 cursor-updater 可执行文件路径（旧版兼容）
 fn get_cursor_updater_path() -> Result<std::path::PathBuf, String> {
     #[cfg(target_os = "windows")]
     {

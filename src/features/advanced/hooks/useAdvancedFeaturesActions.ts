@@ -79,9 +79,12 @@ export function useAdvancedFeaturesActions({
   const handleToggleAutoUpdate = useCallback(async () => {
     try {
       const cmd = autoUpdateDisabled ? "enable_auto_update" : "disable_auto_update";
-      const result = await invoke<{ success: boolean; message: string }>(cmd);
+      const result = await invoke<{ success: boolean; message: string; details?: string[] }>(cmd);
       if (result.success) {
-        showSuccess(result.message);
+        const msg = result.details?.length
+          ? `${result.message}\n${result.details.join("\n")}`
+          : result.message;
+        showSuccess(msg);
         const status = await invoke<{ disabled: boolean }>("get_auto_update_status");
         setAutoUpdateDisabled(status.disabled);
       } else {
